@@ -2,7 +2,7 @@ from models.model_cnn import Model
 import torch
 from Datasets import transform, ImageDataset, DataLoader
 import sys
-TEST_FILE='/Users/kaankocaer/PycharmProjects/pythonProject2/datas/asl_alphabet_test'
+TEST_FILE= '/datas/asl_alphabet_test'
 
 model=Model()
 
