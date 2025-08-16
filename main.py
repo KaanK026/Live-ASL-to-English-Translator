@@ -1,4 +1,4 @@
-from src.infer_live import start_process
+from testing.infer_test_live import start_process
 import torch
 
 model_type=None#TODO frontend
