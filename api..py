@@ -71,7 +71,7 @@ def predict_frame(model, frame, previous_prediction, same_count, text):
                 text += " "
         elif predicted_class == "del":
             text = text[:-1]
-        elif predicted_class != "nothing":
+        elif predicted_class != "nothing.":
             text += predicted_class
 
     return text, previous_prediction, same_count
