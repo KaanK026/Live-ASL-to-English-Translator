@@ -1,8 +1,8 @@
 #do the imports
 import cv2
-from utils import load_idx_to_class
+from src.utils import load_idx_to_class
 import torch
-from Datasets import transform
+from src.Datasets import transform
 from PIL import Image
 from torchvision import transforms
 from textblob import TextBlob
