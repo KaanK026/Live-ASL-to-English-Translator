@@ -89,7 +89,7 @@ async def set_model(model_name: str, client_id: str):
             client_data[client_id] = {"latest_text": "", "model": loaded_model}
         else:
             client_data[client_id]["model"] = loaded_model
-        return {"status": "success", "current_model": model_name}
+        return {"status": "success", "current_model.": model_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
 
