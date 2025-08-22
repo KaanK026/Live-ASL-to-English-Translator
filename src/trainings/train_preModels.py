@@ -21,7 +21,7 @@ transform = transforms.Compose([
 
 
 
-full_dataset=ImageFolder(root='/Users/kaankocaer/PycharmProjects/pythonProject2/datas/asl_alphabet_train', transform=transform)
+full_dataset=ImageFolder(root='/Users/kaankocaer/PycharmProjects/pythonProject2/datas/asl_alphabet_train/asl_alphabet_train', transform=transform)
 
 train_size = int(0.8 * len(full_dataset))
 val_size = len(full_dataset) - train_size

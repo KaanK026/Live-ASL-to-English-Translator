@@ -71,7 +71,7 @@ def predict_frame(model, frame, previous_prediction, same_count, text):
                 text += " "
         elif predicted_class == "del":
             text = text[:-1]
-        elif predicted_class != "nothing":
+        elif predicted_class != "nothing.":
             text += predicted_class
 
     return text, previous_prediction, same_count
@@ -89,7 +89,7 @@ async def set_model(model_name: str, client_id: str):
             client_data[client_id] = {"latest_text": "", "model": loaded_model}
         else:
             client_data[client_id]["model"] = loaded_model
-        return {"status": "success", "current_model": model_name}
+        return {"status": "success", "current_model.": model_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
 
