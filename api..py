@@ -1,126 +1,90 @@
-# api.py
-import asyncio
-import uuid
-import torch
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from src.utils import load_idx_to_class
-from src.Datasets import transform
-from torchvision import transforms
-from textblob import TextBlob
-import numpy as np
-from PIL import Image
-import cv2  # for client-uploaded video frames
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import subprocess
+import os
+from typing import Optional
 
-# Load class mapping
-idx_to_class = load_idx_to_class()
-
-# FastAPI setup
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # adjust to your frontend
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# Device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Path to your ASL virtual camera script
+SCRIPT_PATH = r"C:\Users\PC\PycharmProjects\Live-ASL-to-English-Translator\asl_virtual_cam.py"
 
-# Available models
-MODEL_PATHS = {
-    "Resnet Model": "best_resnet_model.pth",
-    "MobileNetV3 Model": "best_mobileNetV3_model.pth",
-    "Custom CNN Model": "best_CNN_model.pth"
-}
+# Track the running virtual cam process
+running_process: Optional[subprocess.Popen] = None
 
-# Client sessions
-client_data = {}  # key: client_id, value: {"latest_text": str, "model": TorchModel}
 
-# Stability parameters
-STABILITY_THRESHOLD = 5
+class ModelRequest(BaseModel):
+    model_name: str  # "Resnet" | "MobileNet" | "CustomCNN"
 
-# --- Utility functions ---
-def predict_frame(model, frame, previous_prediction, same_count, text):
-    """Run model inference on a single frame and update text buffer"""
-    frame = transforms.ToPILImage()(frame)
-    frame = transform(frame)
-    input_tensor = frame.unsqueeze(0).to(device)
 
-    with torch.no_grad():
-        output = model(input_tensor)
-        _, predicted = torch.max(output, 1)
-        predicted = predicted.item()
+@app.post("/start-cam")
+def start_cam(request: ModelRequest):
+    global running_process
 
-    predicted_class = idx_to_class.get(str(predicted), "Unknown")
+    # Check if script exists
+    if not os.path.exists(SCRIPT_PATH):
+        raise HTTPException(status_code=500, detail="ASL virtual cam script not found.")
 
-    # Stability logic
-    if predicted_class == previous_prediction:
-        same_count += 1
-    else:
-        previous_prediction = predicted_class
-        same_count = 0
+    # If already running, return status
+    if running_process is not None and running_process.poll() is None:
+        return {
+            "status": "already_running",
+            "message": "Virtual camera is already active."
+        }
 
-    if same_count >= STABILITY_THRESHOLD:
-        if predicted_class == "space":
-            if text and not text.endswith(" "):
-                last_word = text.split()[-1]
-                corrected = str(TextBlob(last_word).correct())
-                text = text[:-(len(last_word))] + corrected
-                text += " "
-        elif predicted_class == "del":
-            text = text[:-1]
-        elif predicted_class != "nothing.":
-            text += predicted_class
+    # Map model names to actual model files
+    model_map = {
+        "Resnet": "best_resnet_model.pth",
+        "MobileNet": "best_mobilenet_model.pth",
+        "CustomCNN": "best_customcnn_model.pth"
+    }
+    model_file = model_map.get(request.model_name)
 
-    return text, previous_prediction, same_count
+    # Validate model choice
+    if model_file is None:
+        raise HTTPException(status_code=400, detail="Invalid model name provided.")
 
-# --- Endpoints ---
-@app.post("/set_model/{model_name}")
-async def set_model(model_name: str, client_id: str):
-    if model_name not in MODEL_PATHS:
-        raise HTTPException(status_code=404, detail="Model not found")
+    model_path = os.path.join(os.path.dirname(SCRIPT_PATH), model_file)
+
+    # Check if model file exists
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=500, detail=f"Model file '{model_file}' not found.")
+
     try:
-        loaded_model = torch.load(MODEL_PATHS[model_name], map_location=device)
-        loaded_model.to(device)
-        loaded_model.eval()
-        if client_id not in client_data:
-            client_data[client_id] = {"latest_text": "", "model": loaded_model}
-        else:
-            client_data[client_id]["model"] = loaded_model
-        return {"status": "success", "current_model.": model_name}
+        # Start the virtual cam process (non-blocking)
+        running_process = subprocess.Popen(
+            ["python", SCRIPT_PATH, model_file],
+            cwd=os.path.dirname(SCRIPT_PATH),
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start virtual cam: {str(e)}")
 
-# --- WebSocket for video frames ---
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    client_id = str(uuid.uuid4())
-    client_data[client_id] = {"latest_text": "", "model": None}
+    return {
+        "status": "started",
+        "model": request.model_name,
+        "message": f"Virtual camera started using {request.model_name} model."
+    }
 
-    previous_prediction = None
-    same_count = 0
-    text = ""
 
-    try:
-        while True:
-            data = await websocket.receive_bytes()
-            # Convert bytes to numpy array (assuming client sends raw frames)
-            np_arr = np.frombuffer(data, np.uint8)
-            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+@app.post("/stop-cam")
+def stop_cam():
+    global running_process
 
-            client_model = client_data[client_id]["model"]
-            if client_model is None:
-                await asyncio.sleep(0.01)
-                continue
+    if running_process is None or running_process.poll() is not None:
+        return {"status": "not_running", "message": "Virtual camera is not running."}
 
-            text, previous_prediction, same_count = predict_frame(
-                client_model, frame, previous_prediction, same_count, text
-            )
+    running_process.terminate()
+    running_process = None
 
-            client_data[client_id]["latest_text"] = text
-            await websocket.send_json({"text": text})
-    except WebSocketDisconnect:
-        client_data.pop(client_id, None)
+    return {"status": "stopped", "message": "Virtual camera has been stopped."}
+
+
+@app.get("/status")
+def status():
+    """Check if the virtual camera process is running"""
+    global running_process
+    is_running = running_process is not None and running_process.poll() is None
+    return {
+        "status": "running" if is_running else "stopped"
+    }
