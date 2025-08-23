@@ -11,17 +11,15 @@ from torchvision import transforms
 
 
 transform = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
     transforms.ColorJitter(brightness=0.2, contrast=0.2),
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
+#TODO: Fix overfitting, change dataset, maybe make it one model, mirror the frames
 
-
-full_dataset=ImageFolder(root='/Users/kaankocaer/PycharmProjects/pythonProject2/datas/asl_alphabet_train/asl_alphabet_train', transform=transform)
+full_dataset=ImageFolder(root=r'C:\Users\PC\PycharmProjects\Live-ASL-to-English-Translator\datas\asl_alphabet_train\asl_alphabet_train', transform=transform)
 
 train_size = int(0.8 * len(full_dataset))
 val_size = len(full_dataset) - train_size
@@ -44,7 +42,7 @@ scheduler=StepLR(optimizer, step_size=3, gamma=0.95)
 loss_function=nn.CrossEntropyLoss()
 
 
-num_epochs= 20
+num_epochs= 7
 
 
 def train_one_epoch(model, data_loader, optimizer, device):
@@ -99,19 +97,21 @@ def validation(model,data_loader, device):
 
 bes_val_loss=float('inf')
 
-for epoch in range(num_epochs):
-    train_loss, train_accuracy = train_one_epoch(model, train_loader, optimizer, device)
-    val_loss, val_accuracy = validation(model, val_loader, device)
 
-    scheduler.step()
+if __name__=="__main__":
+    for epoch in range(num_epochs):
+        train_loss, train_accuracy = train_one_epoch(model, train_loader, optimizer, device)
+        val_loss, val_accuracy = validation(model, val_loader, device)
 
-    print(f"Epoch [{epoch + 1}/{num_epochs}], "
-          f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, "
-          f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
+        scheduler.step()
 
-    # Save the model if validation loss improves
-    if val_loss < bes_val_loss:
-        bes_val_loss = val_loss
-        torch.save(model.state_dict(), 'best_resnet_model.pth')
-        #torch.save(model.state.dict(), 'best_mobileNetV3_model.pth')
-        print("Model saved!")
+        print(f"Epoch [{epoch + 1}/{num_epochs}], "
+              f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, "
+              f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
+
+        # Save the model if validation loss improves
+        if val_loss < bes_val_loss:
+            bes_val_loss = val_loss
+            torch.save(model.state_dict(), 'best_resnet_model.pth')
+            # torch.save(model.state.dict(), 'best_mobileNetV3_model.pth')
+            print("Model saved!")
