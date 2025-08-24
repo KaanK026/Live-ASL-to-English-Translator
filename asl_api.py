@@ -1,15 +1,18 @@
-# api.py
+# asl_api.py
 
 import multiprocessing
 import logging
 from logging.handlers import QueueHandler
-from fastapi import FastAPI, HTTPException
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException,Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
-from asl_virtual_cam import start_virtual_cam, get_resnet18
+from src.models.model_resnet import get_resnet18
+from asl_worker import start_virtual_cam
 import torch
-
+import os
 # ---------------------------
 # FastAPI Setup
 # ---------------------------
@@ -39,7 +42,8 @@ log_queue = None
 
 class StartCamRequest(BaseModel):
     model_path: str
-    device_preference: str = "auto"  # "auto", "cpu", or "cuda"
+    device_preference: Optional[str] = "auto"  # "auto", "cpu", or "cuda"
+    camera_index: Optional[int] = 0
 
 
 # ---------------------------
@@ -71,8 +75,8 @@ def logger_process(queue: multiprocessing.Queue):
 # API Endpoints
 # ---------------------------
 
-@app.post("/start")
-async def start_camera(request: StartCamRequest):
+@app.post("/start-cam")
+async def start_camera(request: StartCamRequest=Body(...)):
     global camera_process, log_listener_process, log_queue
 
     if camera_process and camera_process.is_alive():
@@ -89,8 +93,15 @@ async def start_camera(request: StartCamRequest):
         device = torch.device("cpu")
 
     # Load model
-    model = get_resnet18(num_classes=29, pretrained=False)
-    model.load_state_dict(torch.load(request.model_path, map_location=device), strict=True)
+    if os.path.basename(request.model_path) == "Resnet":
+        model = get_resnet18(num_classes=29, pretrained=False)
+        model.load_state_dict(
+            torch.load(
+                r"C:\Users\PC\PycharmProjects\Live-ASL-to-English-Translator\best_resnet_model.pth",
+                map_location=device
+            ),
+            strict=True
+        )
 
     # Start camera process
     ctx = multiprocessing.get_context("spawn")
@@ -100,7 +111,7 @@ async def start_camera(request: StartCamRequest):
     return {"message": "Virtual camera started."}
 
 
-@app.post("/stop")
+@app.post("/stop-cam")
 async def stop_camera():
     global camera_process, log_listener_process, log_queue
 
