@@ -13,9 +13,40 @@ from src.models.model_resnet import get_resnet18
 from asl_worker import start_virtual_cam
 import torch
 import os
+import boto3
+from dotenv import load_dotenv
+
 # ---------------------------
 # FastAPI Setup
 # ---------------------------
+
+
+
+
+load_dotenv()  # loads AWS keys from .env
+
+def get_s3_client():
+    return boto3.client(
+        "s3",
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.getenv("AWS_REGION")
+    )
+
+def download_model_if_needed(model_name: str):
+    model_dir = "model_files"
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, f"best_{model_name.lower()}_model.pth")
+
+    if not os.path.exists(model_path):
+        print(f"Model not found locally. Downloading {model_name} from S3...")
+        s3 = get_s3_client()
+        s3.download_file(os.getenv("AWS_BUCKET_NAME"), model_name, model_path)
+        print(f"Downloaded {model_name} ✅")
+    else:
+        print(f"Model {model_name} found locally ✅")
+
+    return model_path
 
 app = FastAPI(title="ASL Virtual Camera API")
 
@@ -92,16 +123,18 @@ async def start_camera(request: StartCamRequest=Body(...)):
     else:
         device = torch.device("cpu")
 
-    # Load model
+    model_file = download_model_if_needed(request.model_path)
     if os.path.basename(request.model_path) == "Resnet":
         model = get_resnet18(num_classes=29, pretrained=False)
-        model.load_state_dict(
-            torch.load(
-                r"C:\Users\PC\PycharmProjects\Live-ASL-to-English-Translator\best_resnet_model.pth",
-                map_location=device
-            ),
-            strict=True
-        )
+
+    elif os.path.basename(request.model_path) == "MobileNet":
+        model = get_resnet18(num_classes=29, pretrained=False)
+
+    else:
+        model = get_resnet18(num_classes=29, pretrained=False)
+
+    model.load_state_dict(
+    torch.load(model_file, map_location=device), strict=True)
 
     # Start camera process
     ctx = multiprocessing.get_context("spawn")
